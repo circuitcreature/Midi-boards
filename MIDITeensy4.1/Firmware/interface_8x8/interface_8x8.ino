@@ -41,6 +41,25 @@ MIDIDevice * midilist[8] = {
   &midi01, &midi02, &midi03, &midi04, &midi05, &midi06, &midi07, &midi08,
 };
 
+// Serial ports of the 8 DIN MIDI outputs, indexed by USB cable number
+HardwareSerial * midiOutSerial[8] = {
+  &Serial1, &Serial2, &Serial3, &Serial4, &Serial5, &Serial6, &Serial7, &Serial8,
+};
+
+// Called from usbMIDI.read() with each piece of a SysEx message from the
+// computer. Long messages arrive in several pieces (the first starts with
+// 0xF0, the last ends with 0xF7), so SysEx of any length is forwarded instead
+// of being cut off at USB_MIDI_SYSEX_MAX (about 290) bytes.
+void onUsbSysExChunk(const uint8_t *data, uint16_t length, bool last) {
+  byte cable = usbMIDI.getCable();
+  if (cable < 8) {
+    // Forward the raw bytes, the pieces join up into the complete message
+    midiOutSerial[cable]->write(data, length);
+  } else if (cable < 16) {
+    midilist[cable - 8]->sendSysEx(length, data, true);
+  }
+}
+
 
 // A variable to know how long the LED has been turned on
 elapsedMillis ledOnMillis;
@@ -65,6 +84,9 @@ void setup() {
   MIDI6.turnThruOff();
   MIDI7.turnThruOff();
   MIDI8.turnThruOff();
+
+  // Receive SysEx from the computer in pieces, so long messages aren't truncated
+  usbMIDI.setHandleSystemExclusive(onUsbSysExChunk);
   
     digitalWriteFast(13, HIGH); // LED on
     delay(500);
